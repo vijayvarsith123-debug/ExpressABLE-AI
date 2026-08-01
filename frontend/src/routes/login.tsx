@@ -1,8 +1,9 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { Lock, Mail, ArrowRight } from "lucide-react";
+import { Lock, Mail, ArrowRight, Sparkles } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAccessibility } from "@/contexts/AccessibilityContext";
+import { useAuth } from "@/contexts/AuthContext";
 
 export const Route = createFileRoute("/login")({
   head: () => ({
@@ -17,6 +18,7 @@ export const Route = createFileRoute("/login")({
 function Login() {
   const navigate = useNavigate();
   const { announce } = useAccessibility();
+  const { signInAsGuest } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -40,6 +42,12 @@ function Login() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleGuestLogin = () => {
+    signInAsGuest("learner", "Demo", "User");
+    announce("Signed in in Guest Demo mode. Redirecting to dashboard.");
+    void navigate({ to: "/dashboard" });
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -148,15 +156,26 @@ function Login() {
           </div>
         </div>
 
-        <button
-          type="button"
-          disabled={loading}
-          onClick={handleGoogleLogin}
-          className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground shadow-sm hover:bg-secondary transition-all disabled:opacity-50"
-        >
-          <GoogleIcon />
-          Continue with Google
-        </button>
+        <div className="space-y-2">
+          <button
+            type="button"
+            disabled={loading}
+            onClick={handleGoogleLogin}
+            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground shadow-sm hover:bg-secondary transition-all disabled:opacity-50"
+          >
+            <GoogleIcon />
+            Continue with Google
+          </button>
+
+          <button
+            type="button"
+            onClick={handleGuestLogin}
+            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-dashed border-primary/50 bg-primary/5 px-4 py-2.5 text-sm font-semibold text-primary shadow-sm hover:bg-primary/10 transition-all"
+          >
+            <Sparkles className="size-4" />
+            Quick Demo / Guest Mode
+          </button>
+        </div>
 
         <p className="mt-6 text-center text-sm text-muted-foreground">
           Don't have an account?{" "}

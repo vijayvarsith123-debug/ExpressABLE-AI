@@ -1,8 +1,9 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { Lock, Mail, ArrowRight, User as UserIcon } from "lucide-react";
+import { Lock, Mail, ArrowRight, User as UserIcon, UserCheck, AlertTriangle, Sparkles } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAccessibility } from "@/contexts/AccessibilityContext";
+import { useAuth } from "@/contexts/AuthContext";
 
 export const Route = createFileRoute("/signup")({
   head: () => ({
@@ -17,6 +18,7 @@ export const Route = createFileRoute("/signup")({
 function Signup() {
   const navigate = useNavigate();
   const { announce } = useAccessibility();
+  const { signInAsGuest } = useAuth();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -24,9 +26,11 @@ function Signup() {
   const [role, setRole] = useState<"learner" | "trainer" | "institution">("learner");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isRateLimit, setIsRateLimit] = useState(false);
 
   const handleGoogleSignup = async () => {
     setErrorMsg(null);
+    setIsRateLimit(false);
     setLoading(true);
     try {
       const { error } = await supabase.auth.signInWithOAuth({
@@ -45,41 +49,112 @@ function Signup() {
     }
   };
 
+  const handleDirectLoginAttempt = async () => {
+    if (!email || !password) {
+      setErrorMsg("Please enter both email and password.");
+      return;
+    }
+    setErrorMsg(null);
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+
+      if (data?.user) {
+        announce("Signed in successfully, redirecting to dashboard");
+        void navigate({ to: "/dashboard" });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Direct login failed.";
+      setErrorMsg(`Direct login attempt failed: ${msg}`);
+      announce(`Direct login failed: ${msg}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGuestLogin = () => {
+    signInAsGuest(role, firstName || "Demo", lastName || "User");
+    announce("Signed in in Guest Demo mode. Redirecting to dashboard.");
+    void navigate({ to: "/dashboard" });
+  };
+
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
+    setIsRateLimit(false);
     setLoading(true);
 
     try {
       // 1. Auth Sign Up
+      let authUser = null;
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
       });
 
-      if (authError) throw authError;
+      if (authError) {
+        const errStr = authError.message || String(authError);
+        const checkRateLimit =
+          errStr.toLowerCase().includes("rate limit") ||
+          (authError as unknown as { status?: number }).status === 429 ||
+          (authError as unknown as { code?: string }).code === "over_email_send_rate_limit" ||
+          (authError as unknown as { code?: string }).code === "email_rate_limit_exceeded";
 
-      if (authData?.user) {
-        const userId = authData.user.id;
+        if (checkRateLimit) {
+          // Attempt automatic fallback sign-in in case account was created
+          const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+          });
 
-        // 2. Insert into public.users (in case database RLS requires it, mirroring schema users)
-        const { error: userError } = await supabase
-          .from("users")
-          .insert([{ id: userId, email }])
-          .select();
+          if (!loginError && loginData?.user) {
+            authUser = loginData.user;
+          } else {
+            setIsRateLimit(true);
+            setErrorMsg(
+              "Supabase Email Sending Limit Exceeded: Supabase limits email confirmations on default project settings."
+            );
+            announce("Email rate limit exceeded. Direct login or Guest mode available.");
+            return;
+          }
+        } else {
+          throw authError;
+        }
+      } else {
+        authUser = authData?.user ?? null;
+      }
 
-        // 3. Insert into public.profiles
-        const { error: profileError } = await supabase
-          .from("profiles")
-          .insert([
-            {
-              user_id: userId,
-              role,
-              first_name: firstName,
-              last_name: lastName,
-            },
-          ])
-          .select();
+      if (authUser) {
+        const userId = authUser.id;
+
+        // 2. Insert or upsert into public.users
+        try {
+          await supabase.from("users").upsert([{ id: userId, email }], { onConflict: "id" });
+        } catch {
+          // Non-blocking if table exists or RLS handles it
+        }
+
+        // 3. Insert or upsert into public.profiles
+        try {
+          await supabase.from("profiles").upsert(
+            [
+              {
+                user_id: userId,
+                role,
+                first_name: firstName,
+                last_name: lastName,
+              },
+            ],
+            { onConflict: "user_id" }
+          );
+        } catch {
+          // Non-blocking
+        }
 
         announce("Registration successful, redirecting to dashboard");
         void navigate({ to: "/dashboard" });
@@ -104,10 +179,42 @@ function Signup() {
         <form onSubmit={handleSignup} className="mt-8 space-y-4">
           {errorMsg && (
             <div
-              className="p-4 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm font-medium"
+              className={`p-4 rounded-lg border text-sm font-medium ${
+                isRateLimit
+                  ? "bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-200"
+                  : "bg-destructive/10 border-destructive/20 text-destructive"
+              }`}
               role="alert"
             >
-              {errorMsg}
+              <div className="flex items-start gap-2">
+                {isRateLimit && <AlertTriangle className="size-5 shrink-0 text-amber-500 mt-0.5" />}
+                <div>
+                  <p>{errorMsg}</p>
+
+                  {isRateLimit && (
+                    <div className="mt-3 flex flex-col gap-2">
+                      <p className="text-xs font-normal">Choose an option below to proceed instantly:</p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={handleDirectLoginAttempt}
+                          disabled={loading}
+                          className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-xs font-semibold flex items-center gap-1 transition-colors"
+                        >
+                          <UserCheck className="size-3" /> Try Direct Sign In
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleGuestLogin}
+                          className="px-3 py-1.5 bg-primary text-primary-foreground hover:opacity-90 rounded text-xs font-semibold flex items-center gap-1 transition-all"
+                        >
+                          <Sparkles className="size-3" /> Continue as Guest (Demo)
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
@@ -223,15 +330,26 @@ function Signup() {
           </div>
         </div>
 
-        <button
-          type="button"
-          disabled={loading}
-          onClick={handleGoogleSignup}
-          className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground shadow-sm hover:bg-secondary transition-all disabled:opacity-50"
-        >
-          <GoogleIcon />
-          Continue with Google
-        </button>
+        <div className="space-y-2">
+          <button
+            type="button"
+            disabled={loading}
+            onClick={handleGoogleSignup}
+            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground shadow-sm hover:bg-secondary transition-all disabled:opacity-50"
+          >
+            <GoogleIcon />
+            Continue with Google
+          </button>
+
+          <button
+            type="button"
+            onClick={handleGuestLogin}
+            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-dashed border-primary/50 bg-primary/5 px-4 py-2.5 text-sm font-semibold text-primary shadow-sm hover:bg-primary/10 transition-all"
+          >
+            <Sparkles className="size-4" />
+            Quick Demo / Guest Mode
+          </button>
+        </div>
 
         <p className="mt-6 text-center text-sm text-muted-foreground">
           Already have an account?{" "}
@@ -264,3 +382,4 @@ const GoogleIcon = () => (
     />
   </svg>
 );
+
