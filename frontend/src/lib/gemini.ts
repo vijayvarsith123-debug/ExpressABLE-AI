@@ -81,16 +81,19 @@ const callModelServer = createServerFn({ method: "POST" })
   .handler(async ({ data: { prompt, jsonMode } }) => {
     // 1. NVIDIA NIM (Local or Cloud API Catalog)
     if (shouldUseNvidiaNim()) {
-      const nvidiaUrl = getNvidiaUrl();
-      const modelName = getNvidiaModel();
-      const apiKey = getNvidiaApiKey();
-
       try {
+        const nvidiaUrl = getNvidiaUrl();
+        const modelName = getNvidiaModel();
+        const apiKey = getNvidiaApiKey();
+        if (!apiKey) {
+          throw new Error("NVIDIA NIM API Key is missing");
+        }
+
         const response = await fetch(`${nvidiaUrl}/chat/completions`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: apiKey ? `Bearer ${apiKey}` : "",
+            Authorization: `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
             model: modelName,
@@ -106,25 +109,25 @@ const callModelServer = createServerFn({ method: "POST" })
           }),
         });
 
-        if (!response.ok) {
+        if (response.ok) {
+          const resData = await response.json();
+          const content = resData.choices?.[0]?.message?.content;
+          if (content) return content;
+        } else {
           const errText = await response.text();
-          throw new Error(`NVIDIA NIM returned status ${response.status}: ${errText}`);
+          console.warn(`NVIDIA NIM returned status ${response.status}: ${errText}`);
         }
-
-        const resData = await response.json();
-        return resData.choices?.[0]?.message?.content || "";
       } catch (e) {
-        console.error("NVIDIA NIM server call failed:", e);
-        throw e;
+        console.error("NVIDIA NIM server call failed, falling back:", e);
       }
     }
 
     // 2. Local Ollama Model
     if (shouldUseOllama()) {
-      const ollamaUrl = getOllamaUrl();
-      const modelName = getOllamaModel();
-
       try {
+        const ollamaUrl = getOllamaUrl();
+        const modelName = getOllamaModel();
+
         const response = await fetch(`${ollamaUrl}/api/chat`, {
           method: "POST",
           headers: {
@@ -143,60 +146,64 @@ const callModelServer = createServerFn({ method: "POST" })
           }),
         });
 
-        if (!response.ok) {
-          throw new Error(`Ollama responded with status ${response.status}`);
+        if (response.ok) {
+          const resData = await response.json();
+          const content = resData.message?.content;
+          if (content) return content;
+        } else {
+          console.warn(`Ollama responded with status ${response.status}`);
         }
-
-        const resData = await response.json();
-        return resData.message?.content || "";
       } catch (e) {
-        console.error("Ollama server call failed:", e);
-        throw e;
+        console.error("Ollama server call failed, falling back:", e);
       }
     }
 
     // 3. Google Gemini API
     const apiKey = getApiKey();
-    if (!apiKey) {
-      throw new Error("Gemini API key is not configured.");
-    }
-
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
+    if (apiKey) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            contents: [
               {
-                text: prompt,
+                parts: [
+                  {
+                    text: prompt,
+                  },
+                ],
               },
             ],
-          },
-        ],
-        generationConfig: jsonMode
-          ? {
-              responseMimeType: "application/json",
-            }
-          : undefined,
-      }),
-    });
+            generationConfig: jsonMode
+              ? {
+                  responseMimeType: "application/json",
+                }
+              : undefined,
+          }),
+        });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
+        if (response.ok) {
+          const resData = await response.json();
+          const text = resData.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (text) return text;
+        } else {
+          const errorText = await response.text();
+          console.warn(`Gemini API error: ${response.status} - ${errorText}`);
+        }
+      } catch (e) {
+        console.error("Gemini API call failed:", e);
+      }
     }
 
-    const resData = await response.json();
-    const text = resData.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) {
-      throw new Error("Empty response from Gemini API.");
+    // Ultimate fallback to prevent total crash
+    if (jsonMode) {
+      return "[]";
     }
-
-    return text;
+    throw new Error("All configured AI models (NVIDIA NIM, Ollama, Gemini) failed to respond.");
   });
 
 async function callModel(prompt: string, jsonMode = false): Promise<string> {

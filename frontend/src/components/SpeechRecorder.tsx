@@ -43,13 +43,12 @@ export function SpeechRecorder({ label, onComplete, busyLabel }: SpeechRecorderP
     };
   }, []);
 
+  const [error, setError] = useState<string | null>(null);
+
   const start = () => {
     setElapsed(0);
-    setRecording(true);
-    announce("Recording started");
+    setError(null);
     transcriptRef.current = "";
-
-    interval.current = setInterval(() => setElapsed((e) => e + 1), 1000);
 
     // Initialize Web Speech Recognition
     const SpeechRecognition =
@@ -58,40 +57,66 @@ export function SpeechRecorder({ label, onComplete, busyLabel }: SpeechRecorderP
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window as any).webkitSpeechRecognition;
 
-    if (SpeechRecognition) {
-      try {
-        const rec = new SpeechRecognition();
-        rec.continuous = true;
-        rec.interimResults = false;
-        rec.lang = "en-US";
+    if (!SpeechRecognition) {
+      setError(
+        "Speech recognition is not supported in this browser. Please try Google Chrome or MS Edge.",
+      );
+      announce("Speech recognition not supported.");
+      return;
+    }
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        rec.onresult = (event: any) => {
-          const current = Array.from(event.results)
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            .map((result: any) => result[0].transcript)
-            .join(" ");
-          transcriptRef.current = current;
-        };
+    setRecording(true);
+    announce("Recording started");
+    interval.current = setInterval(() => setElapsed((e) => e + 1), 1000);
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        rec.onerror = (e: any) => {
-          console.error("Speech recognition error", e);
-        };
+    try {
+      const rec = new SpeechRecognition();
+      rec.continuous = true;
+      rec.interimResults = false;
+      rec.lang = "en-US";
 
-        recognitionRef.current = rec;
-        rec.start();
-      } catch (err) {
-        console.error("Failed to start speech recognition", err);
-      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      rec.onresult = (event: any) => {
+        const current = Array.from(event.results)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .map((result: any) => result[0].transcript)
+          .join(" ");
+        transcriptRef.current = current;
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      rec.onerror = (e: any) => {
+        console.error("Speech recognition error", e);
+        if (e.error === "not-allowed") {
+          setError(
+            "Microphone permission denied. Please allow microphone access in your browser address bar/settings.",
+          );
+          announce("Microphone permission denied.");
+        } else if (e.error === "no-speech") {
+          setError("No speech was detected. Try speaking closer to the microphone.");
+          announce("No speech detected.");
+        } else if (e.error === "audio-capture") {
+          setError("No microphone found. Please connect a working recording device.");
+          announce("No microphone found.");
+        } else {
+          setError(`Recording issue: ${e.error || "Unknown error"}`);
+        }
+        stop(true);
+      };
+
+      recognitionRef.current = rec;
+      rec.start();
+    } catch (err) {
+      console.error("Failed to start speech recognition", err);
+      setError("Failed to access your microphone. Please check system permissions.");
+      setRecording(false);
     }
   };
 
-  const stop = () => {
+  const stop = (hadError = false) => {
     if (interval.current) clearInterval(interval.current);
     interval.current = null;
     setRecording(false);
-    announce(`Recording stopped after ${formatElapsed(elapsed)}`);
 
     if (recognitionRef.current) {
       try {
@@ -101,15 +126,24 @@ export function SpeechRecorder({ label, onComplete, busyLabel }: SpeechRecorderP
       }
     }
 
-    // Pass the elapsed seconds and final transcript back
-    setTimeout(() => {
-      onComplete(elapsed, transcriptRef.current || undefined);
-    }, 300);
+    if (!hadError) {
+      announce(`Recording stopped after ${formatElapsed(elapsed)}`);
+      // Pass the elapsed seconds and final transcript back
+      setTimeout(() => {
+        onComplete(elapsed, transcriptRef.current || undefined);
+      }, 300);
+    }
   };
 
   return (
     <div className="glass-card rounded-xl p-6 text-center">
       <p className="text-sm text-muted-foreground">{label}</p>
+
+      {error && (
+        <div className="mt-3 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs font-semibold animate-fade-in max-w-md mx-auto">
+          {error}
+        </div>
+      )}
 
       <div className="mt-5 flex h-24 items-center justify-center gap-1.5" aria-hidden="true">
         {BAR_HEIGHTS.map((h, i) => (

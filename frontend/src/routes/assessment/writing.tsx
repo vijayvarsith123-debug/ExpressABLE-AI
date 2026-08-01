@@ -101,11 +101,8 @@ function WritingCoach() {
   const countId = useId();
 
   const active = useMemo(
-    () =>
-      suggestions.filter(
-        (s) => !applied.includes(s.id) && text.toLowerCase().includes(s.find.toLowerCase()),
-      ),
-    [text, applied, suggestions],
+    () => suggestions.filter((s) => !applied.includes(s.id)),
+    [applied, suggestions],
   );
 
   const apply = (suggestion: Suggestion) => {
@@ -223,6 +220,7 @@ function WritingCoach() {
               {active.map((s) => {
                 const style = KIND_STYLE[s.kind];
                 const Icon = style.icon;
+                const canApply = text.toLowerCase().includes(s.find.toLowerCase());
                 return (
                   <li key={s.id} className="glass-card rounded-xl p-4">
                     <div className="flex items-center gap-2">
@@ -242,13 +240,19 @@ function WritingCoach() {
                       <span className="font-semibold">{s.replace}</span>
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">{s.reason}</p>
-                    <button
-                      type="button"
-                      onClick={() => apply(s)}
-                      className="mt-3 min-h-11 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground"
-                    >
-                      Apply suggestion
-                    </button>
+                    {canApply ? (
+                      <button
+                        type="button"
+                        onClick={() => apply(s)}
+                        className="mt-3 min-h-11 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:opacity-90 transition-opacity"
+                      >
+                        Apply suggestion
+                      </button>
+                    ) : (
+                      <p className="mt-3 text-xs text-muted-foreground italic bg-secondary/50 p-2 rounded">
+                        Note: Text does not match exactly anymore. Please make this edit manually.
+                      </p>
+                    )}
                   </li>
                 );
               })}
