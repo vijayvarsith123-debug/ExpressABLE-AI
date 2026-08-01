@@ -21,7 +21,7 @@ function Signup() {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<"learner" | "trainer">("learner");
+  const [role, setRole] = useState<"learner" | "trainer" | "institution">("learner");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -175,11 +175,12 @@ function Signup() {
             <select
               id="role"
               value={role}
-              onChange={(e) => setRole(e.target.value as "learner" | "trainer")}
+              onChange={(e) => setRole(e.target.value as "learner" | "trainer" | "institution")}
               className="block min-h-11 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
             >
               <option value="learner">Learner (Practise communication skills)</option>
               <option value="trainer">Trainer / Coach (Review and guide learners)</option>
+              <option value="institution">Institution / Organization (Monitor departments)</option>
             </select>
           </div>
 
