@@ -2,10 +2,14 @@ import { createClient } from "@supabase/supabase-js";
 
 const sanitize = (str: unknown): string => {
   if (typeof str !== "string") return "";
-  return str
-    .trim()
-    .replace(/^['"]|['"]$/g, "")
-    .trim();
+  let clean = str.trim();
+  // Strip single/double quotes around variables
+  clean = clean.replace(/^['"]|['"]$/g, "").trim();
+  // Strip zero-width spaces, BOMs, and other invisible Unicode characters
+  clean = clean.replace(/[\u200B-\u200D\uFEFF\u202A-\u202E]/g, "");
+  // Strip any non-printable or non-ASCII control characters
+  clean = clean.replace(/[^\x20-\x7E]/g, "");
+  return clean.trim();
 };
 
 const getSupabaseUrl = () => {
