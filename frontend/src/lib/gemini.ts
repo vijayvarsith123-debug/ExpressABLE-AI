@@ -1,3 +1,5 @@
+import { createServerFn } from "@tanstack/react-start";
+
 const getApiKey = () => {
   return (
     (typeof process !== "undefined" && process.env?.GEMINI_API_KEY) ||
@@ -39,7 +41,6 @@ export const shouldUseOllama = () => {
 // -------------------------------------------------------------
 
 const getNvidiaUrl = () => {
-  // Can be local docker container (http://localhost:8000/v1) or Nvidia Cloud integration endpoint
   return (
     (typeof process !== "undefined" && process.env?.VITE_NVIDIA_API_URL) ||
     import.meta.env?.VITE_NVIDIA_API_URL ||
@@ -72,132 +73,134 @@ export const shouldUseNvidiaNim = () => {
 };
 
 // -------------------------------------------------------------
-// UNIFIED LLM DISPATCHER
+// SECURE SERVER-SIDE FUNCTION (Runs on Serverless/Node to bypass CORS)
 // -------------------------------------------------------------
 
-async function callModel(prompt: string, jsonMode = false): Promise<string> {
-  // 1. NVIDIA NIM (Local or Cloud API Catalog)
-  if (shouldUseNvidiaNim()) {
-    const nvidiaUrl = getNvidiaUrl();
-    const modelName = getNvidiaModel();
-    const apiKey = getNvidiaApiKey();
+const callModelServer = createServerFn({ method: "POST" })
+  .validator((d: { prompt: string; jsonMode: boolean }) => d)
+  .handler(async ({ data: { prompt, jsonMode } }) => {
+    // 1. NVIDIA NIM (Local or Cloud API Catalog)
+    if (shouldUseNvidiaNim()) {
+      const nvidiaUrl = getNvidiaUrl();
+      const modelName = getNvidiaModel();
+      const apiKey = getNvidiaApiKey();
 
-    try {
-      const response = await fetch(`${nvidiaUrl}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: apiKey ? `Bearer ${apiKey}` : "",
-        },
-        body: JSON.stringify({
-          model: modelName,
-          messages: [
-            {
-              role: "user",
-              content: prompt,
-            },
-          ],
-          temperature: 0.2,
-          max_tokens: 1024,
-          // Support json schema output if using OpenAI spec-compliant parser
-          response_format: jsonMode ? { type: "json_object" } : undefined,
-        }),
-      });
+      try {
+        const response = await fetch(`${nvidiaUrl}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: apiKey ? `Bearer ${apiKey}` : "",
+          },
+          body: JSON.stringify({
+            model: modelName,
+            messages: [
+              {
+                role: "user",
+                content: prompt,
+              },
+            ],
+            temperature: 0.2,
+            max_tokens: 1024,
+            response_format: jsonMode ? { type: "json_object" } : undefined,
+          }),
+        });
 
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`NVIDIA NIM returned status ${response.status}: ${errText}`);
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`NVIDIA NIM returned status ${response.status}: ${errText}`);
+        }
+
+        const resData = await response.json();
+        return resData.choices?.[0]?.message?.content || "";
+      } catch (e) {
+        console.error("NVIDIA NIM server call failed:", e);
+        throw e;
       }
-
-      const data = await response.json();
-      return data.choices?.[0]?.message?.content || "";
-    } catch (e) {
-      console.warn("NVIDIA NIM connection failed. Falling back to next engine:", e);
-      throw e;
     }
-  }
 
-  // 2. Local Ollama Model
-  if (shouldUseOllama()) {
-    const ollamaUrl = getOllamaUrl();
-    const modelName = getOllamaModel();
+    // 2. Local Ollama Model
+    if (shouldUseOllama()) {
+      const ollamaUrl = getOllamaUrl();
+      const modelName = getOllamaModel();
 
-    try {
-      const response = await fetch(`${ollamaUrl}/api/chat`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: modelName,
-          messages: [
-            {
-              role: "user",
-              content: prompt,
-            },
-          ],
-          stream: false,
-          format: jsonMode ? "json" : undefined,
-        }),
-      });
+      try {
+        const response = await fetch(`${ollamaUrl}/api/chat`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: modelName,
+            messages: [
+              {
+                role: "user",
+                content: prompt,
+              },
+            ],
+            stream: false,
+            format: jsonMode ? "json" : undefined,
+          }),
+        });
 
-      if (!response.ok) {
-        throw new Error(`Ollama responded with status ${response.status}`);
+        if (!response.ok) {
+          throw new Error(`Ollama responded with status ${response.status}`);
+        }
+
+        const resData = await response.json();
+        return resData.message?.content || "";
+      } catch (e) {
+        console.error("Ollama server call failed:", e);
+        throw e;
       }
-
-      const data = await response.json();
-      return data.message?.content || "";
-    } catch (e) {
-      console.warn(
-        "Ollama connection failed. Make sure you set OLLAMA_ORIGINS='*' and have started Ollama.",
-        e,
-      );
-      throw new Error("Ollama connection failed. Falling back.");
     }
-  }
 
-  // 3. Google Gemini API
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    throw new Error("Gemini API key is not configured.");
-  }
+    // 3. Google Gemini API
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      throw new Error("Gemini API key is not configured.");
+    }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      contents: [
-        {
-          parts: [
-            {
-              text: prompt,
-            },
-          ],
-        },
-      ],
-      generationConfig: jsonMode
-        ? {
-            responseMimeType: "application/json",
-          }
-        : undefined,
-    }),
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              {
+                text: prompt,
+              },
+            ],
+          },
+        ],
+        generationConfig: jsonMode
+          ? {
+              responseMimeType: "application/json",
+            }
+          : undefined,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
+    }
+
+    const resData = await response.json();
+    const text = resData.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) {
+      throw new Error("Empty response from Gemini API.");
+    }
+
+    return text;
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
-  }
-
-  const data = await response.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) {
-    throw new Error("Empty response from Gemini API.");
-  }
-
-  return text;
+async function callModel(prompt: string, jsonMode = false): Promise<string> {
+  return await callModelServer({ prompt, jsonMode });
 }
 
 // -------------------------------------------------------------
@@ -208,8 +211,7 @@ function calculateWordOverlapScore(target: string, transcript: string): number {
   const clean = (str: string) =>
     str
       .toLowerCase()
-      // eslint-disable-next-line no-useless-escape
-      .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "")
+      .replace(/[.,/#!$%^&*;:{}=\-_`~()?]/g, "")
       .replace(/\s+/g, " ")
       .trim()
       .split(" ");
@@ -489,4 +491,56 @@ export async function getInterviewReply(
   const fallbackQuestions = LOCAL_INTERVIEW_QUESTIONS.general;
   const cycleIndex = (nextIndex - bank.length) % fallbackQuestions.length;
   return fallbackQuestions[cycleIndex]!;
+}
+
+export interface InterviewEvaluationResult {
+  communicationScore: number;
+  professionalismScore: number;
+  suggestions: string[];
+}
+
+export async function evaluateInterview(
+  jobContext: string,
+  history: { q: string; a: string }[],
+): Promise<InterviewEvaluationResult> {
+  if (isGeminiConfigured() || shouldUseOllama() || shouldUseNvidiaNim()) {
+    try {
+      const conversationHistory = history
+        .map((item) => `Interviewer: ${item.q}\nCandidate: ${item.a}`)
+        .join("\n");
+
+      const prompt = `
+        You are an expert HR senior interviewer and recruiter.
+        Analyze this candidate's mock interview performance for the role: "${jobContext}".
+        
+        Here is the transcript of the interview:
+        ${conversationHistory}
+        
+        Score their overall communication skills (1-100) and professionalism (1-100).
+        Provide 3 highly actionable, clear suggestions for improvement.
+        Return your response ONLY as a JSON object matching this schema:
+        {
+          "communicationScore": number,
+          "professionalismScore": number,
+          "suggestions": [string, string, string]
+        }
+      `;
+
+      const responseText = await callModel(prompt, true);
+      return JSON.parse(responseText.trim()) as InterviewEvaluationResult;
+    } catch (e) {
+      console.warn("Failed calling model, falling back to local interview evaluator:", e);
+    }
+  }
+
+  // Local fallback
+  return {
+    communicationScore: 82,
+    professionalismScore: 85,
+    suggestions: [
+      "Your answers are relevant, but try to structure them using the STAR method (Situation, Task, Action, Result).",
+      "Incorporate more industry-specific technical vocabulary to showcase your depth.",
+      "Add detail to your examples; brief answers can sometimes be perceived as lack of experience.",
+    ],
+  };
 }

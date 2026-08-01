@@ -1,14 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Bot, Keyboard, Mic, Send, User } from "lucide-react";
+import { Bot, Keyboard, Mic, Send, User, Trophy, Award, MessageSquare } from "lucide-react";
 import { useId, useState } from "react";
 import { SpeechRecorder, formatElapsed } from "@/components/SpeechRecorder";
 import { useAccessibility } from "@/contexts/AccessibilityContext";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 import {
   getInterviewReply,
   isGeminiConfigured,
   shouldUseOllama,
   shouldUseNvidiaNim,
+  evaluateInterview,
+  type InterviewEvaluationResult,
 } from "@/lib/gemini";
 
 export const Route = createFileRoute("/interview")({
@@ -47,12 +51,15 @@ type Mode = "text" | "speech";
 
 function InterviewHub() {
   const { announce } = useAccessibility();
+  const { dbProfile } = useAuth();
   const answerId = useId();
   const [mode, setMode] = useState<Mode>("text");
   const [questionIndex, setQuestionIndex] = useState(0);
   const [draft, setDraft] = useState("");
   const [jobContext, setJobContext] = useState("Customer Support Specialist");
   const [thinking, setThinking] = useState(false);
+  const [evaluating, setEvaluating] = useState(false);
+  const [evaluation, setEvaluation] = useState<InterviewEvaluationResult | null>(null);
   const [apiAlert] = useState(!isGeminiConfigured() && !shouldUseOllama() && !shouldUseNvidiaNim());
   const [localModelActive] = useState(shouldUseOllama() || shouldUseNvidiaNim());
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([
@@ -60,6 +67,44 @@ function InterviewHub() {
   ]);
 
   const finished = questionIndex >= QUESTIONS.length;
+
+  const runEvaluation = async () => {
+    setEvaluating(true);
+    announce("Evaluating interview. Please wait.");
+
+    const historyPairs: { q: string; a: string }[] = [];
+    for (let i = 0; i < transcript.length; i++) {
+      const entry = transcript[i];
+      if (entry.speaker === "interviewer") {
+        const nextEntry = transcript[i + 1];
+        if (nextEntry && nextEntry.speaker === "you") {
+          historyPairs.push({ q: entry.text, a: nextEntry.text });
+        }
+      }
+    }
+
+    try {
+      const res = await evaluateInterview(jobContext, historyPairs);
+      setEvaluation(res);
+
+      if (dbProfile?.id) {
+        const score = Math.round((res.communicationScore + res.professionalismScore) / 2);
+        await supabase.from("mock_interviews").insert([
+          {
+            profile_id: dbProfile.id,
+            job_role_context: jobContext,
+            overall_score: score,
+          },
+        ]);
+      }
+      announce("Evaluation complete.");
+    } catch (err) {
+      console.error(err);
+      announce("Failed to evaluate interview.");
+    } finally {
+      setEvaluating(false);
+    }
+  };
 
   const submitAnswer = async (answer: string) => {
     const trimmed = answer.trim();
@@ -82,7 +127,7 @@ function InterviewHub() {
     setThinking(true);
     try {
       let nextQuestion = "";
-      if (isGeminiConfigured()) {
+      if (isGeminiConfigured() || shouldUseOllama() || shouldUseNvidiaNim()) {
         // Group transcript into { q, a } pairs
         const historyPairs: { q: string; a: string }[] = [];
         for (let i = 0; i < newTranscript.length; i++) {
@@ -115,6 +160,7 @@ function InterviewHub() {
     setTranscript([{ id: 0, speaker: "interviewer", text: QUESTIONS[0]! }]);
     setQuestionIndex(0);
     setDraft("");
+    setEvaluation(null);
     announce("Interview restarted.");
   };
 
@@ -147,18 +193,98 @@ function InterviewHub() {
           </h2>
 
           {finished ? (
-            <div className="mt-5 space-y-4">
-              <p className="text-lg font-medium">
-                That&apos;s the full set — nice work. Review your transcript, then run it again to
-                tighten your answers.
-              </p>
-              <button
-                type="button"
-                onClick={restart}
-                className="min-h-11 rounded-lg bg-primary px-5 text-sm font-semibold text-primary-foreground"
-              >
-                Restart interview
-              </button>
+            <div className="mt-5 space-y-6">
+              <p className="text-lg font-medium">That&apos;s the full set — nice work!</p>
+
+              {evaluation ? (
+                <div className="space-y-6 rounded-xl border border-border bg-secondary/30 p-6 animate-fade-in">
+                  <h3 className="text-lg font-bold flex items-center gap-2">
+                    <Trophy className="size-5 text-warning" />
+                    AI Interview Performance Report
+                  </h3>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="rounded-lg border border-border bg-card p-4">
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">
+                        Communication Score
+                      </p>
+                      <div className="mt-2 flex items-baseline gap-2">
+                        <span className="text-3xl font-extrabold text-primary">
+                          {evaluation.communicationScore}
+                        </span>
+                        <span className="text-sm text-muted-foreground">/ 100</span>
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-border bg-card p-4">
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">
+                        Professionalism Score
+                      </p>
+                      <div className="mt-2 flex items-baseline gap-2">
+                        <span className="text-3xl font-extrabold text-success">
+                          {evaluation.professionalismScore}
+                        </span>
+                        <span className="text-sm text-muted-foreground">/ 100</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+                      <Award className="size-4 text-primary" />
+                      Key Improvement Tips
+                    </h4>
+                    <ul className="space-y-2">
+                      {evaluation.suggestions.map((tip, idx) => (
+                        <li
+                          key={idx}
+                          className="flex gap-2 text-sm text-foreground bg-card p-3 rounded-lg border border-border"
+                        >
+                          <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-xs mt-0.5">
+                            {idx + 1}
+                          </span>
+                          <span>{tip}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-border bg-secondary/10 p-6 text-center">
+                  <Bot className="size-8 text-primary mx-auto mb-3" />
+                  <h3 className="font-semibold text-foreground">Awaiting AI Evaluation</h3>
+                  <p className="text-sm text-muted-foreground mt-1 mb-4">
+                    Analyze your interview answers to generate scorecards and performance feedback.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={evaluating}
+                    onClick={runEvaluation}
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+                  >
+                    {evaluating ? (
+                      <>
+                        <span className="animate-spin rounded-full border-2 border-primary-foreground border-t-transparent size-4"></span>
+                        Evaluating answers...
+                      </>
+                    ) : (
+                      <>
+                        <Trophy className="size-4" />
+                        Generate AI Performance Report
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={restart}
+                  className="min-h-11 rounded-lg border border-border bg-card px-5 text-sm font-semibold hover:bg-secondary/40"
+                >
+                  Restart interview
+                </button>
+              </div>
             </div>
           ) : (
             <>
