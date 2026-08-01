@@ -144,6 +144,192 @@ function Dashboard() {
     dbProfile?.first_name || profile?.name?.trim() || (user ? user.email?.split("@")[0] : "friend");
   const activeRole = dbProfile?.role || profile?.role || "";
 
+  // 1. Trainer Dashboard View
+  if (activeRole === "trainer") {
+    return (
+      <div className="space-y-10 animate-fade-in">
+        <header>
+          <h1 className="text-3xl font-bold">Trainer Console: {name}</h1>
+          <p className="mt-2 text-muted-foreground">
+            Monitor student communication progress, review speech reports, and author coach
+            feedback.
+          </p>
+        </header>
+
+        <section aria-label="Trainer Stats">
+          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <li className="glass-card rounded-xl p-5">
+              <User className="size-5 text-primary" />
+              <p className="mt-3 text-3xl font-bold">14</p>
+              <p className="text-sm font-medium">Assigned Learners</p>
+              <p className="text-xs text-muted-foreground">3 active today</p>
+            </li>
+            <li className="glass-card rounded-xl p-5">
+              <Trophy className="size-5 text-warning" />
+              <p className="mt-3 text-3xl font-bold">78%</p>
+              <p className="text-sm font-medium">Avg Readiness Score</p>
+              <p className="text-xs text-muted-foreground">+2% from last week</p>
+            </li>
+            <li className="glass-card rounded-xl p-5">
+              <Clock className="size-5 text-success" />
+              <p className="mt-3 text-3xl font-bold">3.5h</p>
+              <p className="text-sm font-medium">Total Speech Audited</p>
+              <p className="text-xs text-muted-foreground">12 recordings reviewed</p>
+            </li>
+            <li className="glass-card rounded-xl p-5">
+              <Check className="size-5 text-accent" />
+              <p className="mt-3 text-3xl font-bold">3</p>
+              <p className="text-sm font-medium">Awaiting Feedback</p>
+              <p className="text-xs text-destructive font-semibold">Requires attention</p>
+            </li>
+          </ul>
+        </section>
+
+        <div className="grid gap-6 lg:grid-cols-3">
+          <section className="glass-card rounded-xl p-6 lg:col-span-2 space-y-6">
+            <h2 className="text-xl font-bold">Student Progress Directory</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-border text-xs uppercase text-muted-foreground">
+                    <th className="py-3 font-semibold">Student Name</th>
+                    <th className="py-3 font-semibold">Track</th>
+                    <th className="py-3 font-semibold">Last Active</th>
+                    <th className="py-3 font-semibold">Readiness</th>
+                    <th className="py-3 font-semibold">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border text-sm">
+                  <tr>
+                    <td className="py-3 font-medium text-foreground">Vijay Varshith</td>
+                    <td className="py-3">Software Dev</td>
+                    <td className="py-3">2 hrs ago</td>
+                    <td className="py-3 text-success font-semibold">88%</td>
+                    <td className="py-3">
+                      <span className="px-2 py-0.5 rounded-full bg-success/10 border border-success/20 text-xs text-success font-semibold">
+                        A-Grade
+                      </span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="py-3 font-medium text-foreground">Pranathee H</td>
+                    <td className="py-3">HR Manager</td>
+                    <td className="py-3">Yesterday</td>
+                    <td className="py-3 text-success font-semibold">91%</td>
+                    <td className="py-3">
+                      <span className="px-2 py-0.5 rounded-full bg-success/10 border border-success/20 text-xs text-success font-semibold">
+                        A-Grade
+                      </span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="py-3 font-medium text-foreground">Raghunandhan PK</td>
+                    <td className="py-3">Customer Support</td>
+                    <td className="py-3">3 days ago</td>
+                    <td className="py-3 text-warning font-semibold">74%</td>
+                    <td className="py-3">
+                      <span className="px-2 py-0.5 rounded-full bg-warning/10 border border-warning/20 text-xs text-warning font-semibold">
+                        Needs Audit
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className="glass-card rounded-xl p-6 space-y-4 flex flex-col justify-between">
+            <div>
+              <h2 className="text-xl font-bold">Trainer Actions</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Quickly review recordings or publish notes for your learners.
+              </p>
+            </div>
+            <div className="space-y-3 pt-2">
+              <button className="w-full min-h-11 rounded-lg bg-primary text-primary-foreground font-semibold text-sm">
+                Review Speech Recordings
+              </button>
+              <button className="w-full min-h-11 rounded-lg border border-border bg-card text-foreground font-semibold text-sm">
+                Publish Training Report
+              </button>
+            </div>
+          </section>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Institution Dashboard View
+  if (activeRole === "institution") {
+    return (
+      <div className="space-y-10 animate-fade-in">
+        <header>
+          <h1 className="text-3xl font-bold">Institution Dashboard: {name}</h1>
+          <p className="mt-2 text-muted-foreground">
+            Institutional overview of communication training across departments and classes.
+          </p>
+        </header>
+
+        <section aria-label="Institution Stats">
+          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <li className="glass-card rounded-xl p-5">
+              <BookOpen className="size-5 text-primary" />
+              <p className="mt-3 text-3xl font-bold">182</p>
+              <p className="text-sm font-medium">Enrolled Students</p>
+              <p className="text-xs text-muted-foreground">Across 3 departments</p>
+            </li>
+            <li className="glass-card rounded-xl p-5">
+              <User className="size-5 text-warning" />
+              <p className="mt-3 text-3xl font-bold">8</p>
+              <p className="text-sm font-medium">Active Instructors</p>
+              <p className="text-xs text-muted-foreground">2 on-call today</p>
+            </li>
+            <li className="glass-card rounded-xl p-5">
+              <Trophy className="size-5 text-success" />
+              <p className="mt-3 text-3xl font-bold">84%</p>
+              <p className="text-sm font-medium">Institutional Readiness</p>
+              <p className="text-xs text-muted-foreground">+3% vs state benchmark</p>
+            </li>
+            <li className="glass-card rounded-xl p-5">
+              <Clock className="size-5 text-accent" />
+              <p className="mt-3 text-3xl font-bold">428h</p>
+              <p className="text-sm font-medium">Practice Hours Logged</p>
+              <p className="text-xs text-muted-foreground">Cumulative totals</p>
+            </li>
+          </ul>
+        </section>
+
+        <div className="grid gap-6 lg:grid-cols-3">
+          <section className="glass-card rounded-xl p-6 lg:col-span-2 space-y-4">
+            <h2 className="text-xl font-bold">Department Performance Analytics</h2>
+            <div className="space-y-4">
+              <Meter label="Engineering Department (78 Students)" value={82} tone="primary" />
+              <Meter label="Business Administration (64 Students)" value={88} tone="success" />
+              <Meter label="Humanities & Comms (40 Students)" value={76} tone="accent" />
+            </div>
+          </section>
+
+          <section className="glass-card rounded-xl p-6 space-y-4 flex flex-col justify-between">
+            <div>
+              <h2 className="text-xl font-bold">Governance & Exports</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Export analytical metrics and progress histories for school boards.
+              </p>
+            </div>
+            <div className="space-y-3 pt-2">
+              <button className="w-full min-h-11 rounded-lg bg-primary text-primary-foreground font-semibold text-sm">
+                Export CSV/Excel Reports
+              </button>
+              <button className="w-full min-h-11 rounded-lg border border-border bg-card text-foreground font-semibold text-sm">
+                Configure SSO Integrations
+              </button>
+            </div>
+          </section>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-10">
       <header>
