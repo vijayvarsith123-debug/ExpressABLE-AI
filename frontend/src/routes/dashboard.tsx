@@ -56,10 +56,10 @@ function Dashboard() {
   const [stats, setStats] = useState<
     Array<{ icon: ElementType; label: string; value: string; hint: string }>
   >([
-    { icon: BookOpen, label: "Words learned", value: "428", hint: "+24 this week" },
-    { icon: Clock, label: "Practice minutes", value: "312", hint: "+38 this week" },
-    { icon: Flame, label: "Day streak", value: "12", hint: "Personal best: 19" },
-    { icon: Trophy, label: "Sessions passed", value: "27", hint: "3 awaiting review" },
+    { icon: BookOpen, label: "Words learned", value: "0", hint: "Loading..." },
+    { icon: Clock, label: "Practice minutes", value: "0", hint: "Loading..." },
+    { icon: Flame, label: "Day streak", value: "0", hint: "Loading..." },
+    { icon: Trophy, label: "Sessions passed", value: "0", hint: "Loading..." },
   ]);
 
   useEffect(() => {
@@ -89,14 +89,15 @@ function Dashboard() {
 
         // Calculate estimated stats based on real activities
         const practiceMinutes = Math.round(sCount * 1.5 + wCount * 2.5 + iCount * 5.0);
-        const wordsLearned = sCount * 3 + wCount * 5 + 15; // baseline start plus practice
+        const wordsLearned = totalSessions > 0 ? sCount * 3 + wCount * 5 + 15 : 0;
 
         setStats([
           {
             icon: BookOpen,
             label: "Words learned",
             value: String(wordsLearned),
-            hint: `Based on your exercises`,
+            hint:
+              totalSessions > 0 ? "Based on your exercises" : "Complete exercises to learn words",
           },
           {
             icon: Clock,
@@ -107,7 +108,7 @@ function Dashboard() {
           {
             icon: Flame,
             label: "Day streak",
-            value: totalSessions > 0 ? "2" : "0",
+            value: totalSessions === 0 ? "0" : totalSessions === 1 ? "1" : "2",
             hint: totalSessions > 0 ? "Daily streak active" : "Start practicing to build streak",
           },
           {

@@ -28,6 +28,7 @@ import {
   shouldUseOllama,
   shouldUseNvidiaNim,
 } from "@/lib/gemini";
+import { supabase } from "@/lib/supabase";
 
 type SuggestionKind = "grammar" | "spelling" | "tone";
 
@@ -130,6 +131,54 @@ function WritingCoach() {
       setSuggestions(mapped);
       setApplied([]);
       announce(`AI check complete. Found ${mapped.length} recommendations.`);
+
+      // Write results to database asynchronously
+      try {
+        const rawProfile = window.localStorage.getItem("expressable.profile");
+        let dbProfileId = "";
+        if (rawProfile) {
+          const parsed = JSON.parse(rawProfile);
+          dbProfileId = parsed?.id || "";
+        }
+
+        if (dbProfileId) {
+          const grammarIssues = mapped.filter(
+            (m) => m.kind === "grammar" || m.kind === "spelling",
+          ).length;
+          const toneIssues = mapped.filter((m) => m.kind === "tone").length;
+          const grammarScore = Math.max(50, 100 - grammarIssues * 10);
+          const clarityScore = Math.max(50, 100 - toneIssues * 12);
+
+          const { data: assessmentData, error: insertError } = await supabase
+            .from("writing_assessments")
+            .insert([
+              {
+                profile_id: dbProfileId,
+                original_text: text,
+                status: "completed",
+              },
+            ])
+            .select()
+            .single();
+
+          if (!insertError && assessmentData) {
+            await supabase.from("writing_reports").insert([
+              {
+                assessment_id: assessmentData.id,
+                grammar_score: grammarScore,
+                clarity_score: clarityScore,
+                tone_analysis:
+                  toneIssues > 0
+                    ? "Suggestions generated to refine tone."
+                    : "Tone is clear and professional.",
+                suggested_edits: mapped,
+              },
+            ]);
+          }
+        }
+      } catch (dbErr) {
+        console.warn("Failed to save writing assessment to Supabase:", dbErr);
+      }
     } catch (err: unknown) {
       console.error(err);
       announce("Failed to run AI check. Using local rule check instead.");

@@ -11,6 +11,7 @@ import {
   shouldUseOllama,
   shouldUseNvidiaNim,
 } from "@/lib/gemini";
+import { supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/assessment/speech")({
   head: () => ({
@@ -106,19 +107,96 @@ function SpeechCoach() {
     if (!prompt) return;
     setView("loading");
     announce("Evaluating your speech with AI coach...");
+    const transcribed = transcript || prompt.text;
+
     try {
-      const transcribed = transcript || prompt.text;
       const result = await evaluateSpeech(prompt.text, transcribed, seconds);
       setReport(result);
       setView("report");
       announce(
         `Score report ready. Pronunciation ${result.pronunciation} percent, fluency ${result.fluency} percent, grammar ${result.grammar} percent.`,
       );
+
+      // Write results to database asynchronously
+      try {
+        const rawProfile = window.localStorage.getItem("expressable.profile");
+        let dbProfileId = "";
+        if (rawProfile) {
+          const parsed = JSON.parse(rawProfile);
+          dbProfileId = parsed?.id || "";
+        }
+
+        if (dbProfileId) {
+          const { data: assessmentData, error: insertError } = await supabase
+            .from("speech_assessments")
+            .insert([
+              {
+                profile_id: dbProfileId,
+                audio_url: "recorded-audio.wav",
+                transcript: transcribed,
+                status: "completed",
+              },
+            ])
+            .select()
+            .single();
+
+          if (!insertError && assessmentData) {
+            await supabase.from("speech_reports").insert([
+              {
+                assessment_id: assessmentData.id,
+                pronunciation_score: result.pronunciation,
+                fluency_score: result.fluency,
+                pacing_feedback: result.notes.join("\n"),
+              },
+            ]);
+          }
+        }
+      } catch (dbErr) {
+        console.warn("Failed to save speech assessment to Supabase:", dbErr);
+      }
     } catch (err: unknown) {
       console.error(err);
       const result = scoreFor(prompt, seconds);
       setReport(result);
       setView("report");
+
+      // Write fallback score to database too
+      try {
+        const rawProfile = window.localStorage.getItem("expressable.profile");
+        let dbProfileId = "";
+        if (rawProfile) {
+          const parsed = JSON.parse(rawProfile);
+          dbProfileId = parsed?.id || "";
+        }
+
+        if (dbProfileId) {
+          const { data: assessmentData, error: insertError } = await supabase
+            .from("speech_assessments")
+            .insert([
+              {
+                profile_id: dbProfileId,
+                audio_url: "recorded-audio.wav",
+                transcript: transcribed,
+                status: "completed",
+              },
+            ])
+            .select()
+            .single();
+
+          if (!insertError && assessmentData) {
+            await supabase.from("speech_reports").insert([
+              {
+                assessment_id: assessmentData.id,
+                pronunciation_score: result.pronunciation,
+                fluency_score: result.fluency,
+                pacing_feedback: result.notes.join("\n"),
+              },
+            ]);
+          }
+        }
+      } catch (dbErr) {
+        console.warn("Failed to save fallback speech assessment to Supabase:", dbErr);
+      }
     }
   };
 
