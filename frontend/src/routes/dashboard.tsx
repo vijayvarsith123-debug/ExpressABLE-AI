@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { BookOpen, Check, Clock, Flame, Mic, Quote, RefreshCw, Trophy } from "lucide-react";
+import { BookOpen, Building2, Check, Clock, Flame, Mic, Quote, RefreshCw, Trophy, User } from "lucide-react";
 import { useEffect, useState, type ElementType } from "react";
 import { AccessibilityControls } from "@/components/a11y/AccessibilityControls";
 import { Meter } from "@/components/Meter";
@@ -408,8 +408,15 @@ function Dashboard() {
 
           <div className="mt-6 flex flex-wrap gap-3">
             <Link
+              to="/simulation"
+              className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow hover:opacity-95"
+            >
+              <Building2 aria-hidden="true" className="size-4" />
+              First Day at Office Simulation
+            </Link>
+            <Link
               to="/assessment/speech"
-              className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground"
+              className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border bg-card px-4 text-sm font-semibold"
             >
               <Mic aria-hidden="true" className="size-4" />
               Continue speech practice
